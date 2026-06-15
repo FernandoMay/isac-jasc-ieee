@@ -4,5 +4,9 @@
 *.bbl
 *.blg
 *.synctex.gz
+*.nav
+*.snm
+*.toc
+*.vrb
 __pycache__/
 *.pyc
