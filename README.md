@@ -49,4 +49,4 @@ pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
 
 ## Repository
 
-https://github.com/FernandoMay/isac-ieee-paper
+[https://github.com/FernandoMay/isac-ieee-paper](https://github.com/FernandoMay/isac-jasc-ieee)
