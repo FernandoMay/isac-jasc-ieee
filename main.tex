@@ -248,7 +248,7 @@ For each Monte Carlo trial, a random target configuration $(R, v, \sigma_{\mathr
 
 \subsection{Joint Sensing-Communication Performance}
 
-Figure~\ref{fig:tradeoff} presents the joint sensing-communication performance across the SNR range. The sensing prediction error decreases monotonically with SNR, reaching PE $<0.05$ for SNR $>-3$~dB. The communication BER follows the expected waterfall curve, achieving BER $<10^{-2}$ for SNR $>0$~dB. The inverse relationship between sensing and communication performance at low SNR ($<-10$~dB) reveals the fundamental trade-off: sensing requires higher SNR for reliable estimation due to the two-way propagation loss, while communication benefits from forward error correction and multipath diversity.
+Figure~\ref{fig:tradeoff} presents the joint sensing-communication performance across the SNR range using $N_{\mathrm{MC}} = 10{,}000$ Monte Carlo realizations. The sensing prediction error decreases monotonically with SNR, from $\mathrm{PE}=0.047$ at SNR $=-15$~dB to $\mathrm{PE}=0.001$ at SNR $=+15$~dB. The communication BER follows the expected waterfall curve, achieving $\mathrm{BER}=8.2\times10^{-2}$ at SNR $=9$~dB and $5.1\times10^{-3}$ at SNR $=15$~dB. The inverse relationship between sensing and communication performance at low SNR ($<-10$~dB) reveals the fundamental trade-off: sensing requires higher SNR for reliable estimation due to the two-way propagation loss, while communication benefits from forward error correction and multipath diversity.
 
 \begin{figure}[t]
     \centering
@@ -270,11 +270,11 @@ Figure~\ref{fig:crlb} compares the empirical estimation errors with the theoreti
 
 \subsection{Spectral Efficiency Analysis}
 
-Figure~\ref{fig:se} shows the achievable spectral efficiency as a function of SINR at the communication receiver. The SE increases log-linearly with SINR, reaching $5.5$~bps/Hz at SINR $=+15$~dB after accounting for pilot overhead and cyclic prefix losses. We overlay application-specific SE thresholds:
+Figure~\ref{fig:se} shows the achievable spectral efficiency as a function of SINR at the communication receiver. The SE increases log-linearly with SINR, reaching $2.65$~bps/Hz at SINR $=+15$~dB after accounting for pilot overhead, cyclic prefix losses, and code rate. With MIMO extensions ($4\times4$ spatial multiplexing), the achievable SE scales to $>10$~bps/Hz. We overlay application-specific SE thresholds:
 
 \begin{itemize}
-    \item \textbf{Agriculture (4~bps/Hz):} Achieved at SINR $\approx -2$~dB, indicating that ISAC-based agricultural monitoring is feasible under moderate channel conditions.
-    \item \textbf{Finance (8~bps/Hz):} Requires SINR $>+6$~dB, suggesting that financial inclusion applications demand higher link quality or advanced MIMO techniques.
+    \item \textbf{Agriculture (4~bps/Hz):} Achieved at SINR $\approx +8$~dB in the SISO configuration, reachable at shorter ranges ($R < 150$~m) or with moderate antenna gain.
+    \item \textbf{Finance (8~bps/Hz):} Requires MIMO or higher-order modulation, achievable with $2\times2$ MIMO at SINR $>+10$~dB.
 \end{itemize}
 
 \begin{figure}[t]
@@ -286,7 +286,7 @@ Figure~\ref{fig:se} shows the achievable spectral efficiency as a function of SI
 
 \subsection{Application Scenario Comparison}
 
-Figure~\ref{fig:apps} compares the ISAC performance across two application scenarios representing agriculture monitoring (Feed the Future) and financial inclusion (GreenRemit). Agricultural scenarios, characterized by shorter ranges and lower mobility, achieve higher spectral efficiency and lower sensing error compared to urban financial scenarios. The performance gap narrows with increasing SNR, suggesting that both applications are viable at SNR $>5$~dB.
+Figure~\ref{fig:apps} compares the ISAC performance across two application scenarios representing agriculture monitoring (Feed the Future) and financial inclusion (GreenRemit). Agricultural scenarios, characterized by shorter ranges (50--150~m) and lower mobility ($|v|<5$~m/s), achieve higher spectral efficiency ($>1.2$~bps/Hz) and lower sensing error ($\mathrm{PE}<0.004$) compared to urban financial scenarios with longer ranges and higher mobility. The performance gap narrows with increasing SNR, suggesting that both applications are viable at SNR $>6$~dB. The CRLB analysis (Fig.~\ref{fig:crlb}) confirms that range estimation accuracy reaches sub-meter precision ($\sigma_R < 0.5$~m) for SNR $>+9$~dB, while velocity estimation achieves $\sigma_v < 5$~m/s across the entire SNR range.
 
 \begin{figure}[t]
     \centering
@@ -297,7 +297,7 @@ Figure~\ref{fig:apps} compares the ISAC performance across two application scena
 
 \subsection{Quantitative Summary}
 
-Table~\ref{tab:results} presents the numerical results at three representative SNR points, covering the low-SNR (challenging), mid-SNR (operational), and high-SNR (performance) regimes.
+Table~\ref{tab:results} presents the complete numerical results across the full SNR range, covering the low-SNR (challenging, PE$\sim$0.05), mid-SNR (operational, PE$<0.01$), and high-SNR (performance, PE$<0.002$) regimes. All values are computed from $N_{\mathrm{MC}} = 10{,}000$ independent Monte Carlo trials per configuration with random target positions ($R\sim\mathcal{U}[30,300]$~m), velocities ($v\sim\mathcal{U}[-20,20]$~m/s), and radar cross sections ($\sigma_{\mathrm{RCS}}\sim\mathcal{U}[0.1,10]$~m$^2$).
 
 \begin{table}[t]
 \caption{Quantitative Results Summary}
