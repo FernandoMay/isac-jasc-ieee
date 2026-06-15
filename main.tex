@@ -115,10 +115,11 @@ The transmitted OFDM frame comprises $N_{\mathrm{sub}}$ subcarriers and $N_{\mat
 
 The discrete-time baseband transmitted signal is given by:
 
+{\footnotesize
 \begin{equation}
     x[n] = \frac{1}{\sqrt{N_{\mathrm{sub}}}} \sum_{k=0}^{N_{\mathrm{sub}}-1} \sum_{m=0}^{N_{\mathrm{sym}}-1} s_{k,m} \, e^{j2\pi k n / N_{\mathrm{sub}}} \, \mathrm{rect}\left(\frac{n - mN_{\mathrm{frame}}}{N_{\mathrm{sub}}}\right)
     \label{eq:ofdm_tx}
-\end{equation}
+\end{equation}}
 
 where $s_{k,m} \in \mathbb{C}$ represents the data symbol on the $k$-th subcarrier and $m$-th symbol, modulated using $M$-ary quadrature amplitude modulation (QAM) with $M=16$. Pilot symbols are inserted every fourth symbol for channel estimation, occupying a spectral efficiency overhead of $25\%$.
 
