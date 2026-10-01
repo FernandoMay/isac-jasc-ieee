@@ -34,6 +34,9 @@ np.random.seed(RANDOM_SEED)
 C = 3e8
 
 
+ROOT_FIG_DIR = 'figures'
+
+
 @dataclass
 class ISACParams:
     fc: float = 28e9
@@ -336,11 +339,32 @@ def run_monte_carlo(params: ISACParams, n_mc: int = 2000) -> pd.DataFrame:
                 'crlb_R': crlb_r, 'crlb_v': crlb_v,
             })
     df_sweep = pd.DataFrame(sweep)
+    # R2-F3. The artifact now publishes the true and estimated range and
+    # velocity, so that a figure can be traced to quantities this run actually
+    # produced rather than to an independent random draw. Pre-fix, R_true,
+    # v_true, R_est and v_est existed in `results` and were dropped before the
+    # CSV was written, so the only range-Doppler figure the package produced had
+    # nothing to be a figure of.
+    keep = ['R_true', 'v_true', 'R_est', 'v_est',
+            'snr_db', 'snr_lin', 'sinr_db', 'sinr_lin',
+            'pe', 'ber', 'se', 'crlb_R', 'crlb_v', 'snr_cmp_lin']
+    df = df[[c for c in keep if c in df.columns]]
     df['type'] = 'montecarlo'
     df_sweep['type'] = 'sweep'
 
-    combined = pd.concat([df_sweep, df[['snr_db','pe','ber','se','sinr_db','crlb_R','crlb_v']].assign(type='mc')],
-                         ignore_index=True)
+    # The two populations carry different columns. The sweep rows have no true or
+    # estimated range, and the Monte Carlo rows now do, so the combined frame is
+    # the union with NaN where a population does not supply a quantity. Projecting
+    # the Monte Carlo frame onto the sweep's columns would have silently dropped
+    # exactly the columns row R2 added.
+    union = list(dict.fromkeys(list(df_sweep.columns) + list(df.columns)))
+    for col in union:
+        if col not in df_sweep.columns:
+            df_sweep[col] = np.nan
+        if col not in df.columns:
+            df[col] = np.nan
+    combined = pd.concat(
+        [df_sweep[union], df[union].assign(type='mc')], ignore_index=True)
 
     print(f"\n[*] Total data points: {len(combined)}")
     return combined
@@ -473,6 +497,123 @@ def generate_figures(df: pd.DataFrame, out: str = 'figures'):
     print('[+] fig5_range_doppler_map.pdf')
 
 
+def generate_range_doppler_figure(out: str, frame) -> str:
+    """Render the run's range and velocity estimation as a figure.
+
+    Row R2. The pre-fix Figure 5 was
+
+        rd = np.random.randn(50, 50)
+        rd[25, 15] = 100
+        im = ax.imshow(rd, ..., extent=[-30, 30, 0, 500])
+        plt.colorbar(im, ax=ax, label='Power [dB]')
+
+    which read nothing from the simulation, applied cosmetic axis extents to
+    array indices, and labelled a colourbar in dB over raw Gaussian draws. The
+    run produced R_true, v_true, R_est and v_est for every realization and the
+    figure consumed none of them.
+
+    This renders exactly those columns: each estimate against its own truth, and
+    the residual distributions with the CRLB scale for reference. It is renamed
+    rather than kept as "Range-Doppler Map" because it is not one -- a genuine
+    2D range-Doppler map is a 2D-FFT over a delay-Doppler grid, which this
+    package never computes. The manuscript describes that processing as the
+    receiver's method, so the claim that the receiver performs it is a separate
+    question and is recorded as NEW EXPERIMENT REQUIRED rather than papered over
+    with a better-looking plot.
+
+    Consumes the frame and nothing else: no RNG, no re-simulation, no bound. That
+    is what makes it traceable, and it is asserted behaviourally by the
+    falsifier rather than by reading this docstring.
+    """
+    import matplotlib.pyplot as plt
+    plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in
+                  plt.style.available else 'default')
+
+    R_true = np.asarray(frame['R_true'], dtype=float)
+    R_est = np.asarray(frame['R_est'], dtype=float)
+    v_true = np.asarray(frame['v_true'], dtype=float)
+    v_est = np.asarray(frame['v_est'], dtype=float)
+    crlb = np.asarray(frame.get('crlb_R', np.zeros_like(R_true)), dtype=float)
+
+    r_resid = R_est - R_true
+    v_resid = v_est - v_true
+
+    fig, axes = plt.subplots(2, 2, figsize=(7.0, 5.0))
+
+    axes[0, 0].scatter(R_true, R_est, s=4, alpha=0.35, color='#1f77b4')
+    lim = [min(R_true.min(), R_est.min()), max(R_true.max(), R_est.max())]
+    axes[0, 0].plot(lim, lim, 'k--', lw=0.8)
+    axes[0, 0].set_xlabel('True range [m]')
+    axes[0, 0].set_ylabel('Estimated range [m]')
+    axes[0, 0].set_title('Range estimate vs truth', fontsize=9)
+
+    axes[0, 1].scatter(v_true, v_est, s=4, alpha=0.35, color='#d62728')
+    limv = [min(v_true.min(), v_est.min()), max(v_true.max(), v_est.max())]
+    axes[0, 1].plot(limv, limv, 'k--', lw=0.8)
+    axes[0, 1].set_xlabel('True velocity [m/s]')
+    axes[0, 1].set_ylabel('Estimated velocity [m/s]')
+    axes[0, 1].set_title('Velocity estimate vs truth', fontsize=9)
+
+    axes[1, 0].hist(r_resid, bins=40, color='#1f77b4', alpha=0.8)
+    if crlb.size and np.nanmean(crlb) > 0:
+        axes[1, 0].axvline(np.mean(crlb), color='k', ls='--', lw=0.9,
+                           label=f'mean CRLB = {np.mean(crlb):.2f} m')
+        axes[1, 0].legend(fontsize=7)
+    axes[1, 0].set_xlabel('Range residual [m]')
+    axes[1, 0].set_ylabel('count')
+    axes[1, 0].set_title('Range residual distribution', fontsize=9)
+
+    axes[1, 1].hist(v_resid, bins=40, color='#d62728', alpha=0.8)
+    axes[1, 1].set_xlabel('Velocity residual [m/s]')
+    axes[1, 1].set_ylabel('count')
+    axes[1, 1].set_title('Velocity residual distribution', fontsize=9)
+
+    fig.suptitle('Range and velocity estimation from the Monte Carlo run',
+                 fontsize=10, fontweight='bold')
+    fig.tight_layout()
+    path = os.path.join(out, 'fig5_range_doppler_figure.pdf')
+    fig.savefig(path, bbox_inches='tight')
+    plt.close(fig)
+    return path
+
+
+def _discard_legacy_range_doppler_figure() -> None:
+    """Remove the fabricated Figure 5 and the duplicated root-level copies.
+
+    Row R2. Two separate problems, both about which bytes a reader sees.
+
+    The old fig5_range_doppler_map.pdf plotted independent noise. It is deleted
+    rather than overwritten under the same name, because a file called
+    "range_doppler_map" that is not a range-Doppler map is the defect.
+
+    Every figure also existed twice -- root-level and under figures/ -- with
+    different bytes, because the root copies were last regenerated at 808f0b2 and
+    figures/ at 12fd2a7. main.tex reads figures/ and presentation.tex read the
+    root, so the paper and the presentation were showing different images under
+    the same figure numbers. The root copies are removed and presentation.tex is
+    repointed, so one path is authoritative.
+    """
+    import shutil
+    removed = []
+    for name in ('fig5_range_doppler_map.pdf',):
+        for base in (ROOT_FIG_DIR, '.'):
+            path = os.path.join(base, name)
+            if os.path.exists(path):
+                os.remove(path)
+                removed.append(path)
+    for name in sorted(os.listdir(ROOT_FIG_DIR)):
+        if not name.startswith('fig') or not name.endswith('.pdf'):
+            continue
+        path = os.path.join('.', name)
+        if os.path.exists(path):
+            os.remove(path)
+            removed.append(path)
+    if removed:
+        print('[+] Removed duplicated or fabricated figure copies:')
+        for path in removed:
+            print(f'    {path}')
+
+
 def generate_summary(df: pd.DataFrame, out: str = 'figures'):
     mask = df['type'] == 'sweep'
     grp = df[mask].groupby('snr_db')
@@ -514,8 +655,10 @@ if __name__ == '__main__':
     df.to_csv('isac_experiment_results.csv', index=False)
     print('[+] Raw data: isac_experiment_results.csv')
     print('\n[*] Generating figures...')
-    generate_figures(df, 'figures')
-    generate_summary(df, 'figures')
+    generate_figures(df, ROOT_FIG_DIR)
+    generate_summary(df, ROOT_FIG_DIR)
+    generate_range_doppler_figure(ROOT_FIG_DIR, df)
+    _discard_legacy_range_doppler_figure()
     print('\n' + '='*65)
     print('  Complete.')
     print('='*65)
