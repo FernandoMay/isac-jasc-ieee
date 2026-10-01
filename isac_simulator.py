@@ -405,7 +405,7 @@ def generate_figures(df: pd.DataFrame, out: str = 'figures'):
     ax.legend(loc='upper right', framealpha=0.9)
     ax.set_xlim(snr_v.min()-1, snr_v.max()+1)
     plt.tight_layout()
-    fig.savefig(os.path.join(out, 'fig1_sensing_comm_tradeoff.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(out, 'fig1_sensing_comm_tradeoff.pdf'), bbox_inches='tight', metadata={'CreationDate': None})
     plt.close()
     print('[+] fig1_sensing_comm_tradeoff.pdf')
 
@@ -429,7 +429,7 @@ def generate_figures(df: pd.DataFrame, out: str = 'figures'):
                   fontsize=10, fontweight='bold')
     ax1.set_xlim(snr_v.min()-1, snr_v.max()+1)
     plt.tight_layout()
-    fig.savefig(os.path.join(out, 'fig2_crlb_analysis.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(out, 'fig2_crlb_analysis.pdf'), bbox_inches='tight', metadata={'CreationDate': None})
     plt.close()
     print('[+] fig2_crlb_analysis.pdf')
 
@@ -451,7 +451,7 @@ def generate_figures(df: pd.DataFrame, out: str = 'figures'):
     ax.set_xlim(snr_v.min()-1, snr_v.max()+1)
     ax.set_ylim(0, max(se_v)*1.2)
     plt.tight_layout()
-    fig.savefig(os.path.join(out, 'fig3_spectral_efficiency.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(out, 'fig3_spectral_efficiency.pdf'), bbox_inches='tight', metadata={'CreationDate': None})
     plt.close()
     print('[+] fig3_spectral_efficiency.pdf')
 
@@ -478,7 +478,7 @@ def generate_figures(df: pd.DataFrame, out: str = 'figures'):
     a2.legend(fontsize=7); a2.grid(True, linestyle=':', alpha=0.3, axis='y')
     a2.set_yscale('log')
     plt.tight_layout()
-    fig.savefig(os.path.join(out, 'fig4_application_scenarios.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(out, 'fig4_application_scenarios.pdf'), bbox_inches='tight', metadata={'CreationDate': None})
     plt.close()
     print('[+] fig4_application_scenarios.pdf')
 
@@ -492,7 +492,7 @@ def generate_figures(df: pd.DataFrame, out: str = 'figures'):
     ax.set_title('Range-Doppler Map (OFDM-ISAC)', fontsize=10, fontweight='bold')
     plt.colorbar(im, ax=ax, label='Power [dB]')
     plt.tight_layout()
-    fig.savefig(os.path.join(out, 'fig5_range_doppler_map.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(out, 'fig5_range_doppler_map.pdf'), bbox_inches='tight', metadata={'CreationDate': None})
     plt.close()
     print('[+] fig5_range_doppler_map.pdf')
 
@@ -572,7 +572,7 @@ def generate_range_doppler_figure(out: str, frame) -> str:
                  fontsize=10, fontweight='bold')
     fig.tight_layout()
     path = os.path.join(out, 'fig5_range_doppler_figure.pdf')
-    fig.savefig(path, bbox_inches='tight')
+    fig.savefig(path, bbox_inches='tight', metadata={'CreationDate': None})
     plt.close(fig)
     return path
 
