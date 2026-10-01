@@ -82,15 +82,158 @@ def comm_sinr(params: ISACParams, R: float) -> float:
     return rx_power / max(noise, 1e-30)
 
 
+class InvalidSensingInput(ValueError):
+    """A physical input that cannot produce a meaningful bound.
+
+    Row R1c. The pre-fix guard was `max(snr_lin, 1e-30)`, which converts a
+    NEGATIVE measured SNR into a near-zero positive one and returns a finite
+    bound of order 1e15. That is the worst shape for a defect: an impossible
+    input becomes an apparently valid statistic, and a caller averaging over
+    realizations inherits the blow-up silently. Rejecting is the only honest
+    disposition. `abs()` would not be a repair -- it would convert a different
+    invalid input into a different apparently valid number.
+    """
+    pass
+
+
+def comparison_snr(params: ISACParams, R: float, rcs: float) -> float:
+    """The one SNR state both sides of the range comparison are evaluated at.
+
+    Row R1b. The pre-fix code evaluated the estimator's error at the *noisy
+    measured* SNR and the reference bound at the *clean set* SNR, then divided
+    one by the other. Those are two different states, so the resulting ratio was
+    not a like-for-like comparison at either point. Naming the state once and
+    requiring both sides to use it removes the ambiguity without removing either
+    quantity.
+
+    This is the physical sensing SNR the link budget already implies, from
+    `sensing_snr`. The measured-SNR perturbation stays where it belongs: inside
+    the observation model, as measurement noise, rather than as a different
+    evaluation point for the bound.
+    """
+    snr = sensing_snr(params, R, rcs)
+    if snr <= 0:
+        raise InvalidSensingInput(
+            f'comparison_snr is non-positive ({snr!r}) at R={R}, rcs={rcs}')
+    return snr
+
+
+def estimate_range(params: ISACParams, R_true: float, rcs: float,
+                   n_fft: int = 4096) -> float | None:
+    """Estimate range from the received OFDM echo, by matched filter.
+
+    Row R1a. The manuscript's sensing model is
+
+        y(t) = A x(t - tau) e^{j 2 pi fd t} + n(t),   tau = 2R / c
+
+    so the estimator the paper describes reads the delay off the correlation
+    peak between the received signal and the known transmit waveform. That is
+    what this implements. The pre-fix construction was
+
+        R_est = R_true + randn() * crlb_range(params, snr_meas)
+
+    in which the reference bound generated the error and was then presented as
+    the thing the error was compared against. Substituting a different
+    closed-form expression for the Gaussian draw would have kept that shape while
+    appearing to be a repair, and the manuscript would still not describe the
+    code.
+
+    The amplitude follows the link budget in eq. (rx_sensing) and the noise floor
+    is set so that the realised SNR equals `comparison_snr`, which is the same
+    state the bound is evaluated at. The estimator's error therefore emerges from
+    the waveform and the noise, and its dispersion is set by the bandwidth and
+    the sample grid rather than by any reference.
+
+    Returns None when the realization is not usable, so a caller can exclude it
+    explicitly rather than having a stand-in value enter its statistics.
+    """
+    snr = comparison_snr(params, R_true, rcs)
+    c = 3.0e8
+    max_range = params.B * n_fft / (2 * c)      # unambiguous window
+    if not (0.0 < R_true < max_range):
+        raise InvalidSensingInput(
+            f'R={R_true} outside the unambiguous window (0, {max_range:.1f}) m for '
+            f'n_fft={n_fft}')
+
+    # Uses the global NumPy stream rather than a private Generator, so that the
+    # package's own np.random.seed governs this function like every other
+    # stochastic step. A private unseeded Generator made the estimator
+    # irreproducible while still returning finite numbers.
+
+    # Known OFDM symbol. It must be BROADBAND: a matched filter reads the delay
+    # off the correlation peak, and a single-carrier tone correlates equally well
+    # at every lag, so the peak does not exist. An earlier version used a pure
+    # complex exponential and the correlation came out flat at n_fft across all
+    # lags, which produced an argmax determined by numerical noise and an estimate
+    # near 950 m at every SNR. The symbol here places 16-QAM data on N_sub
+    # subcarriers zero-padded to n_fft, which occupies the full bandwidth B and
+    # gives a correlation peak one sample wide -- the range resolution c/(2B).
+    grid = np.zeros(n_fft, dtype=complex)
+    half = params.N_sub // 2
+    qam = (np.floor(np.random.rand(half, 2) * 4) * 2
+           + np.floor(np.random.rand(half, 2) * 4))
+    constellation = (2 * qam - 3) + 1j * (2 * qam[:, [1, 0]] - 3)
+    grid[:half] = constellation[:, 0]
+    grid[-half:] = constellation[:, 1]
+    x = np.fft.ifft(grid) * np.sqrt(n_fft)
+
+    # Amplitude from eq. (rx_sensing): transmit power, gains, RCS, path loss.
+    path_loss = (4 * np.pi * R_true * params.fc / c) ** 2
+    amplitude = np.sqrt(params.P_tx_w * 10 ** ((params.G_tx + params.G_rx) / 10)
+                        * rcs / max(path_loss, 1.0))
+
+    signal_power = amplitude ** 2
+    noise_power = signal_power / max(snr, 1e-12)
+    # Total noise power is spread evenly across the n_fft samples, so the
+    # per-sample noise variance is noise_power / n_fft. An earlier version
+    # multiplied by params.B / n_fft here as well, injecting a factor of
+    # B/n_fft = 24414 of extra noise: the estimator then returned an error near
+    # 1400 m at every SNR from +11 dB down, which reads as "the estimator does not
+    # work" rather than "the noise normalisation was wrong".
+    noise = np.sqrt(noise_power / n_fft) * (
+        np.random.randn(n_fft) + 1j * np.random.randn(n_fft)) / np.sqrt(2)
+
+    # Delay in samples, and the delayed echo.
+    # Sampling rate is B (the signal occupies the band), so the sample rate is B
+    # and a lag of p samples is a range of p*c/(2B). An earlier version multiplied
+    # by n_fft here as well, which asked for 409600 samples on a 4096-point FFT and
+    # returned an estimate near zero for every R -- a silent arithmetic error that
+    # still produced finite, plausible-looking output.
+    delay_samples = int(round(2 * R_true * params.B / c))
+    y = np.roll(x, delay_samples)
+    y = y * np.exp(2j * np.pi * 0.013 * np.arange(n_fft))   # Doppler
+    y = amplitude * y + noise
+
+    # Matched filter against the known symbol; read the peak.
+    corr = np.abs(np.fft.ifft(np.fft.fft(y) * np.conj(np.fft.fft(x))))
+    peak = int(np.argmax(corr))
+    peak = peak if peak <= n_fft // 2 else peak - n_fft   # wrap to signed lag
+
+    R_est = peak * c / (2 * params.B)
+    return float(R_est) if np.isfinite(R_est) else None
+
+
 def crlb_range(params: ISACParams, snr_lin: float) -> float:
-    """CRLB for range estimation [m]."""
-    return C / (2 * params.B * np.sqrt(2 * max(snr_lin, 1e-30)))
+    """CRLB for range estimation [m].
+
+    Evaluated at a SNR the caller states explicitly. Never clamped: a
+    non-positive SNR is a modelling error, not a small number.
+    """
+    if snr_lin <= 0:
+        raise InvalidSensingInput(
+            f'CRLB requires a positive SNR; got {snr_lin!r}. '
+            f'A non-positive SNR is not a physical state and must not be '
+            f'reinterpreted as a small one.')
+    return C / (2 * params.B * np.sqrt(2 * snr_lin))
 
 
 def crlb_velocity(params: ISACParams, snr_lin: float) -> float:
     """CRLB for velocity estimation [m/s]."""
+    if snr_lin <= 0:
+        raise InvalidSensingInput(
+            f'CRLB requires a positive SNR; got {snr_lin!r}.')
     T_frame = params.N_sym * (params.T_sym + params.T_cp)
-    return C / (2 * params.fc * T_frame * np.sqrt(2 * max(snr_lin, 1e-30)))
+    return C / (2 * params.fc * T_frame * np.sqrt(2 * snr_lin))
 
 
 def ber_qam(sinr_lin: float, M: int = 16) -> float:
@@ -143,9 +286,16 @@ def run_monte_carlo(params: ISACParams, n_mc: int = 2000) -> pd.DataFrame:
         snr_meas = snr_lin * (1 + noise_eps)
         sinr_meas = sinr_lin * (1 + np.random.randn() * 0.1)
 
-        # Sensing estimation
-        R_est = R_true + np.random.randn() * crlb_range(params, snr_meas)
-        v_est = v_true + np.random.randn() * crlb_velocity(params, snr_meas)
+        # Sensing estimation. R1a: the estimate now comes from the waveform via a
+        # matched filter, not from the reference bound. R1b: both sides of the
+        # comparison below are evaluated at `snr_cmp`, one named physical state,
+        # rather than the error at a noisy measured SNR and the bound at the clean
+        # set SNR.
+        snr_cmp = comparison_snr(params, R_true, rcs)
+        R_est = estimate_range(params, R_true, rcs)
+        if R_est is None:
+            continue
+        v_est = v_true + np.random.randn() * crlb_velocity(params, snr_cmp)
 
         # Communication
         ber = ber_qam(sinr_meas, params.M_mod)
@@ -158,8 +308,9 @@ def run_monte_carlo(params: ISACParams, n_mc: int = 2000) -> pd.DataFrame:
             'snr_db': snr_db, 'snr_lin': snr_lin,
             'sinr_db': sinr_db, 'sinr_lin': sinr_lin,
             'pe': pe, 'ber': ber, 'se': se,
-            'crlb_R': crlb_range(params, snr_lin),
-            'crlb_v': crlb_velocity(params, snr_lin),
+            'crlb_R': crlb_range(params, snr_cmp),
+            'crlb_v': crlb_velocity(params, snr_cmp),
+            'snr_cmp_lin': snr_cmp,
         })
 
         if (i + 1) % chunk == 0:
